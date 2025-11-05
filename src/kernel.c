@@ -8,7 +8,7 @@ void kmain(void) {
     // Wait until Limine provides framebuffer
 
 
-    fb_puts(&framebuffer, "KOKOT", 10, 10, 0x00FF00);
+    fb_puts(&framebuffer, "LINE", 10, 10, 0x00FF00);
 
     for (;;) __asm__("hlt");
 }

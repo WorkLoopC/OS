@@ -1,13 +1,11 @@
 #include <stdint.h>
 #include "limine.h"
 
-// ---------- LIMINE FRAMEBUFFER REQUEST ----------
 static volatile struct limine_framebuffer_request fb_request = {    //frame buffer z limine.h
     .id = LIMINE_FRAMEBUFFER_REQUEST,
     .revision = 0
 };
 
-// ---------- 8x8 FONT (ASCII 32-127) ----------
 uint8_t font8x8_basic[128][8] = {
     [32] = {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // space
     [33] = {0x18,0x18,0x18,0x18,0x18,0x00,0x18,0x00}, // !
@@ -90,12 +88,12 @@ uint8_t font8x8_basic[128][8] = {
     [63] = {0x3C,0x66,0x30,0x18,0x18,0x00,0x18,0x00}  // ?
 };
 
-// ---------- FRAMEBUFFER PRINTING ----------
+
 struct fb {
     uint32_t *pixels;
     uint32_t width;
     uint32_t height;
-    uint32_t pitch; // pixels per row
+    uint32_t pitch; 
 };
 
 struct fb framebuffer;
@@ -105,7 +103,7 @@ void fb_put_char(struct fb *fb, char c, uint32_t x, uint32_t y, uint32_t color) 
     for (int row = 0; row < 8; row++) {
         uint8_t bits = font8x8_basic[(int)c][row];
         for (int col = 0; col < 8; col++) {
-            if (bits & (1 << (7 - col))) { // flip horizontally
+            if (bits & (1 << (7 - col))) { 
                 int px = x + col;
                 int py = y + row;
                 if (px < fb->width && py < fb->height)
@@ -129,7 +127,7 @@ void fb_puts(struct fb *fb, const char *str, uint32_t x, uint32_t y, uint32_t co
         fb_put_char(fb, *str, x, y, color);
         x += 8;
         str++;
-        if (x + 8 > fb->width) { // wrap line
+        if (x + 8 > fb->width) { 
             x = 0;
             y += 8;
         }
