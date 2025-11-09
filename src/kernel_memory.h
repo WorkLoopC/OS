@@ -6,19 +6,26 @@
 
 
 #define PAGE 4096
-uintptr_t free_pages[100];
+uintptr_t free_pages[1000];
 size_t free_page_count = 0;
 
-//struct limine_memmap_response* memmap = memmap_request.response;
+
 static volatile struct limine_memmap_request memmap_request = {
     .id = LIMINE_MEMMAP_REQUEST,
     .revision = 0
 };
+
+
+inline typedef struct node
+{
+    int val;
+    struct node* next;
+} node_t;
 /*
 struct limine_memmap_entry {
-    uint64_t base;
-    uint64_t length;
-    uint64_t type;
+    uint64_t base;           // physical base address of the memory region
+    uint64_t length;        // size of the region
+    uint64_t type;          // type of memory (usable, reserved, etc.)
 };
 
 struct limine_memmap_response {
@@ -33,47 +40,38 @@ struct limine_memmap_request {
     LIMINE_PTR(struct limine_memmap_response *) response;
 };
 */
-void* pmm_alloc_page() {
-    struct limine_memmap_entry* mementry;
+static void* pmm_alloc_page(node_t* head) {
     struct limine_memmap_response* memmap = memmap_request.response;
-    int buffer[100];
-    for (int i = 0; i < memmap->entry_count; i++) {  //(uint64_t addr = mementry->base; addr < mementry->base + mementry->length; addr += PAGE)
-        uint64_t base = mementry->base;      // physical base address of the memory region
-        uint64_t length = mementry->length;  // size of the region
-        uint64_t type = mementry->type;     // type of memory (usable, reserved, etc.)
-        uintptr_t addr = 0;                                                                                //free_pages[free_page_count++] = memmap->entries[i];
+    node_t* current = head;
+    for (int i = 0; i < memmap->entry_count; i++) {  //for (int i = 0; i < memmap->entry_count; i++)
+                                                                      
         struct limine_memmap_entry* memory_entry = memmap->entries[i];
-        for (addr = memory_entry->base; addr < memory_entry->base + memory_entry->length; addr += PAGE)
+        for (uint64_t addr = memory_entry->base; addr < memory_entry->base + memory_entry->length; addr += PAGE)
         {
-            free_pages[free_page_count++] = addr;
+            if (memory_entry->type != LIMINE_MEMMAP_USABLE) continue;
+            current->val=addr;
+            current->next->next=NULL;
+            free_pages[free_page_count++] = (uintptr_t)current->val;
+
+            //next=current;
+            if(free_page_count > 998) break; 
         }
-
-
-
+        if(free_page_count > 998) break;
         //else if (mementry->type == LIMINE_MEMMAP_RESERVED) {}
 
     }
 
 
 
-} // returns physical addr
-
+} 
 
 uintptr_t pmm_alloc() {
 
-
 }
-
 
 void pmm_free_page(void* addr) {
 
-
-
-
 }
-
-
-
 
 
 /*
@@ -92,11 +90,8 @@ void* kmalloc(size_t size) {
 
 }
 */
-
 void kfree(void* ptr) {
     // mark block in bitmap as free
-
-
 }
 
 /*

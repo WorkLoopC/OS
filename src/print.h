@@ -1,7 +1,6 @@
 #include <stdint.h>
 #include "limine.h"
 
-// ---------- LIMINE FRAMEBUFFER REQUEST ----------
 static volatile struct limine_framebuffer_request fb_request = {    //frame buffer z limine.h
     .id = LIMINE_FRAMEBUFFER_REQUEST,
     .revision = 0
@@ -95,7 +94,7 @@ struct fb {
     uint32_t* pixels;
     uint32_t width;
     uint32_t height;
-    uint32_t pitch; // pixels per row
+    uint32_t pitch; 
 };
 
 struct fb framebuffer;
@@ -105,7 +104,7 @@ void fb_put_char(struct fb* fb, char c, uint32_t x, uint32_t y, uint32_t color) 
     for (int row = 0; row < 8; row++) {
         uint8_t bits = font8x8_basic[(int)c][row];
         for (int col = 0; col < 8; col++) {
-            if (bits & (1 << (7 - col))) { // flip horizontally
+            if (bits & (1 << (7 - col))) { 
                 int px = x + col;
                 int py = y + row;
                 if (px < fb->width && py < fb->height)
@@ -138,10 +137,8 @@ void fb_puts_char(struct fb* fb, const char* str, uint32_t x, uint32_t y, uint32
 
 void itoa_hex(uintptr_t value, char* buffer) { //Funkce na konverzi stringu na int (pro print adres k debugovani memory managementu)
     char hex[] = "0123456789ABCDEF";
-
     buffer[0] = '0';
     buffer[1] = 'x';
-
     for (int i = 0; i < (sizeof(uintptr_t) * 2); i++) {
         int shift = ((sizeof(uintptr_t) * 2 - 1 - i) * 4);
         buffer[2 + i] = hex[(value >> shift) & 0xF];
@@ -149,4 +146,3 @@ void itoa_hex(uintptr_t value, char* buffer) { //Funkce na konverzi stringu na i
 
     buffer[2 + sizeof(uintptr_t) * 2] = '\0';
 }
-
