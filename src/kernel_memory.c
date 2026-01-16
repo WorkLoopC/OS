@@ -1,93 +1,71 @@
 #include "kernel_memory.h"
 
-size_t bitmap_size = 0;
-uint32_t bitmap[];
-uint64_t pages;
+uintptr_t test;
+uint32_t test_decimal;
+
+static size_t bitmap_size;
+static uint32_t bitmap[CALCULATED_BITMAP_ELEMENTS];
+static uint64_t total_pages;
+volatile uintptr_t physical_address;
 
 volatile struct limine_memmap_request memmap_request = {
     .id = LIMINE_MEMMAP_REQUEST,
     .revision = 0
 };
 
-/*
-struct limine_memmap_entry {
-    uint64_t base;           // physical base address of the memory region
-    uint64_t length;        // size of the region
-    uint64_t type;          // type of memory (usable, reserved, etc.)
-};
-
-struct limine_memmap_response {
-    uint64_t revision;
-    uint64_t entry_count;    // how many memory regions there are
-    LIMINE_PTR(struct limine_memmap_entry **) entries;  entries are not guranteed to be sorted !!
-};
-
-struct limine_memmap_request {
-    uint64_t id[4];
-    uint64_t revision;
-    LIMINE_PTR(struct limine_memmap_response *) response;
-};
-*/
-void pmm_init(struct limine_memmap_response* memmap) {
+void pmm_init(struct limine_memmap_response* memmap) { //bitmap
     size_t largest_memory = 0;
     for (size_t i = 0; i < memmap->entry_count; i++) {
         struct limine_memmap_entry* memory_entry = memmap->entries[i];
-        size_t current_memory_size = memory_entry->base + memory_entry->length;
-        if (current_memory_size > largest_memory) largest_memory = current_memory_size;
+        if (memory_entry->type == LIMINE_MEMMAP_USABLE) {
+            size_t current_memory_size = memory_entry->base + memory_entry->length;
+            if (current_memory_size > largest_memory) largest_memory = current_memory_size;
+        }
     }
-    bitmap_size = (largest_memory + 7) / BYTE;  //+7 because of integer division 
-    bitmap[bitmap_size];
-    //268 435 456 pages(bits)
+    total_pages = largest_memory / PAGE;
+    bitmap_size = (total_pages + 7) / BYTE; //+7 because of integer division , [65 512] bytes-524 096 pages 
+    if (bitmap_size > CALCULATED_BITMAP_ELEMENTS) {
+        //print_error(&framebuffer, "error ", 1);
+        for (;;) __asm__("hlt");
+    }
 }
 
-void pmm_pages(struct limine_memmap_response* memmap) {
-    uint8_t bit = 0;
-    for (size_t i = 0; i < memmap->entry_count; i++) {
-        struct limine_memmap_entry* memory_entry = memmap->entries[i];
-        for (size_t addr = memory_entry->base; addr < memory_entry->base + memory_entry->length; addr += PAGE)  //; addr += PAGE
-        {
-            if (memory_entry->type == LIMINE_MEMMAP_USABLE) {
-                bitmap[i] |= (1 << bit);
-                pages = addr / PAGE;
+uintptr_t pmm_alloc_page(void) {
+    uint64_t page_index = 0;
+    bitmap[0] |= 1u;
+    for (size_t byte_index = 0; byte_index < bitmap_size; byte_index++) {
+        for (uint8_t bit_index = 0; bit_index < BYTE; bit_index++) {
+            uint8_t bit = (bitmap[byte_index] >> bit_index) & 1;
+            if (bit == 0) { // 0 = un-used page 
+                bitmap[byte_index] |= (1 << bit_index);
+                page_index = (byte_index * BYTE) + bit_index;
+                physical_address = page_index * PAGE;
+                if (page_index < total_pages) {
+                    //test_decimal = bitmap[byte_index];
+                    return physical_address;
+                }
+
             }
-            else if (memory_entry->type == LIMINE_MEMMAP_RESERVED) {
-                bitmap[i] &= ~(1 << i);
+            //if bit == 1.. 
+        }
+    }
+    //if (physical_address == 0) for (;;) __asm__("hlt");
+}
+
+void pmm_free_page(void) {
+
+    for (size_t i = 0; i < bitmap_size; i++) {
+
+        if ((uintptr_t)bitmap[i] == physical_address) { // Najit adresu a shiftnout na ten bit z 0 na 1 
+            for (size_t i = 0; i < bitmap_size; i++) {
+
             }
-
-            //if (free_page_count > MAX_PAGES - 3) break;
-        }
-        //if (free_page_count > MAX_PAGES - 3) break;
-    }
-
-}
-
-uintptr_t pmm_alloc() {
-
-}
-
-void pmm_free_page(void* addr) {
-
-}
-
-
-/*
-void* kmalloc(size_t size) {
-    // find free block in bitmap, mark as used, return pointer
-
-
-    while () {
-        if (== LIMINE_MEMMAP_RESERVED) {
-            return 0;
-        }
-        else if (== LIMINE_MEMMAP_USABLE) {
+            bitmap[i] = 1;
 
         }
     }
+    //for (;;) __asm__("hlt");
+}
 
-}
-*/
-void kfree(void* ptr) {
-    // mark block in bitmap as free
-}
 
 

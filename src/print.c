@@ -33,6 +33,7 @@ uint8_t font8x8_basic[128][8] = {
     [55] = {0x7F,0x63,0x30,0x18,0x0C,0x0C,0x0C,0x00}, // 7
     [56] = {0x3E,0x63,0x63,0x3E,0x63,0x63,0x3E,0x00}, // 8
     [57] = {0x3E,0x63,0x63,0x7E,0x60,0x30,0x1E,0x00}, // 9
+    [63] = {0x3C,0x66,0x30,0x18,0x18,0x00,0x18,0x00},  // ?
     [65] = {0x18,0x3C,0x66,0x66,0x7E,0x66,0x66,0x00}, // A
     [66] = {0x7C,0x66,0x66,0x7C,0x66,0x66,0x7C,0x00}, // B
     [67] = {0x3C,0x66,0x60,0x60,0x60,0x66,0x3C,0x00}, // C
@@ -84,13 +85,12 @@ uint8_t font8x8_basic[128][8] = {
     [119] = {0x00,0x00,0x63,0x6B,0x7F,0x36,0x36,0x00}, // w
     [120] = {0x00,0x00,0x66,0x3C,0x18,0x3C,0x66,0x00}, // x
     [121] = {0x00,0x00,0x66,0x66,0x66,0x3E,0x06,0x3C}, // y
-    [122] = {0x00,0x00,0x7E,0x0C,0x18,0x30,0x7E,0x00}, // z
-    [63] = {0x3C,0x66,0x30,0x18,0x18,0x00,0x18,0x00}  // ?
+    [122] = {0x00,0x00,0x7E,0x0C,0x18,0x30,0x7E,0x00} // z
+
 };
 
-// ---------- FRAMEBUFFER PRINTING ----------
-
 struct fb framebuffer;
+
 void fb_put_char(struct fb* fb, char c, uint32_t x, uint32_t y, uint32_t color) {
     if (c < 32 || c > 126) return;
     for (int row = 0; row < 8; row++) {
@@ -99,32 +99,37 @@ void fb_put_char(struct fb* fb, char c, uint32_t x, uint32_t y, uint32_t color) 
             if (bits & (1 << (7 - col))) {
                 int px = x + col;
                 int py = y + row;
-                if (px < fb->width && py < fb->height)
-                    fb->pixels[py * fb->pitch + px] = color;
+                if (px < fb->width && py < fb->height) fb->pixels[py * fb->pitch + px] = color;
             }
         }
     }
 }
 
-void fb_puts_char(struct fb* fb, const char* str, uint32_t x, uint32_t y, uint32_t color) {
-    if (!fb_request.response || fb_request.response->framebuffer_count < 1) {
-        for (;;) __asm__("hlt");
-    }
+void print_error(struct fb* fb, const char* str, uint32_t newline) { // newline 0 = same line, 1 = new line 
+    uint32_t color = 0xAA0000;
+    uint32_t x = 0;
+    static uint32_t static_x = 0;
+    static uint32_t y = 0;
+    if (!fb_request.response || fb_request.response->framebuffer_count < 1) for (;;) __asm__("hlt");
 
     struct limine_framebuffer* lim_fb = fb_request.response->framebuffers[0];
     framebuffer.pixels = (uint32_t*)lim_fb->address;
     framebuffer.width = lim_fb->width;
     framebuffer.height = lim_fb->height;
     framebuffer.pitch = lim_fb->pitch / (lim_fb->bpp / 8);
-    while (*str) {
+    if (newline == 1) x = static_x;
+
+    else if (newline == 0) {
+        y += 8;
+        static_x = 0;
+    }
+    while (*str) {                          //fb_puts_char(&framebuffer, "xdd", 0, x);  uint32_t x, uint32_t y)
         fb_put_char(fb, *str, x, y, color);
         x += 8;
         str++;
-        if (x + 8 > fb->width) { // wrap line
-            x = 0;
-            y += 8;
-        }
+        static_x += 8;
     }
+
 }
 
 void print_hex(uintptr_t value, char* buffer) { //Funkce na konverzi stringu na uintptr (pro print adres k debugovani memory managementu)

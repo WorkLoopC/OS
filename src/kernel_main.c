@@ -4,15 +4,17 @@
 #include "limine.h"
 
 void kmain(void) {
-    char buf[19];
+    char buf[10];
     int i = 0;
-    int x = 8;
     pmm_init(memmap_request.response);
+    pmm_alloc_page();
     while (i != 5) {
-        fb_puts_char(&framebuffer, buf, 0, x, 0x00FF00);
-        print_hex((uintptr_t)pages, buf);
+        //print_error(&framebuffer, "error", 0);//0x00FF00
+        //print_hex(physical_address, buf);
+        //print_hex(pmm_alloc_page(), buf);
         i++;
-        x += 8;
     }
+    print_error(&framebuffer, "error ", 1);
+
     for (;;) __asm__("hlt");
 }
