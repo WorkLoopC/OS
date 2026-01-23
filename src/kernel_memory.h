@@ -19,5 +19,6 @@ extern size_t free_page_count;
 extern uint64_t total_pages;
 */
 void pmm_init(struct limine_memmap_response* memmap);
-uintptr_t pmm_alloc_page();
+uintptr_t pmm_alloc_page(void);
+void pmm_free_page(void);
 #endif

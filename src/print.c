@@ -123,7 +123,7 @@ void print_error(struct fb* fb, const char* str, uint32_t newline) { // newline 
         y += 8;
         static_x = 0;
     }
-    while (*str) {                          //fb_puts_char(&framebuffer, "xdd", 0, x);  uint32_t x, uint32_t y)
+    while (*str) {
         fb_put_char(fb, *str, x, y, color);
         x += 8;
         str++;

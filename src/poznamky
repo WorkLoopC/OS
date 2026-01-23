@@ -1,0 +1,30 @@
+
+
+
+
+
+Paging PM to VM:
+
+Virtual adress:
+Bits 48-63 = Sign
+Bits 39-47 = PML4 (given by CR3)
+Bits 30-38 = PDPT
+Bits 21-29 = PD
+Bits 12-20 = PT
+Bits 11-0 = Offset
+
+Page table entry:
+Bits 48-63 = Offset (0xFFFF800000000000(64bit number)) 1111 1111 1111 1111 1000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000
+Bits 39-47 = PML4 (given by CR3)
+Bits 30-38 = PDPT
+Bits 21-29 = PD
+Bits 12-20 = PT
+Bits 11-0 = flags (0=P, 1=R/W, 2=U/S ,3=PWT ,4=PCD, 5=A, 6=AVL, 7=RSVD(0), 8-11=AVL)
+
+Physicall adress:
+Bits 12-51 = Page base
+Bits 11-0 = Offset
+
+CR3 = [ physical_address_of_PML4() | flags ] 
+To extract physicall adress = (0x000FFFFFFFFFF000(48bit number)) 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 0000 0000 0000
+Page flags 0–11 of virtual address	
