@@ -21,4 +21,6 @@ extern uint64_t total_pages;
 void pmm_init(struct limine_memmap_response* memmap);
 uintptr_t pmm_alloc_page(void);
 void pmm_free_page(void);
+void map_page(uintptr_t virtual_addr, uintptr_t physical_addr, uint64_t flags);
+void unmap_page(uintptr_t virtual_addr);
 #endif

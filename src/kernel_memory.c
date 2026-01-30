@@ -69,14 +69,18 @@ static inline uintptr_t read_cr3(void) {    //returns back 48bits, flag bits hav
     return value;
 }
 
-void* phys_to_virtual(void* phys_adress) {
+static inline void* phys_to_virtual(uintptr_t phys_adress) {
     return (void*)phys_adress + 0xFFFF800000000000; //to map the phys_adress into the kernels higher-half and returns 64bits 
 }
 
-void* zero(uint64_t* entries) { //zero the page table, setting it to default state
+static inline void zero_page_table(uint64_t* entries) { //zero the page table to clear old data
     for (uint16_t i = 0; i < 512; i++) {
         entries[i] = 0;
     }
+}
+
+static inline void invalid_virtual_adress(uintptr_t virtual_addr) {
+    __asm__ volatile("invlpg (%0)" ::"r" (virtual_addr) : "memory");
 }
 
 void map_page(uintptr_t virtual_addr, uintptr_t physical_addr, uint64_t flags) {
@@ -87,61 +91,67 @@ void map_page(uintptr_t virtual_addr, uintptr_t physical_addr, uint64_t flags) {
 
     uintptr_t pml4_phys_adress = read_cr3() & ~0xFFF;   //0xFFF to switch flag bits to zero
     uint64_t* pml4 = phys_to_virtual(pml4_phys_adress);
-
-    if ((pml4[pml4_index] & 1) == 0) {  //entry doesnt exist so i gotta create it
-        uintptr_t new_pdpt = pmm_alloc_page() | flags | 0x01;
-        zero(phys_to_virtual(new_pdpt));
-        pml4[pml4_index] = (uintptr_t)new_pdpt | flags;
+    if ((pml4[pml4_index] & 1) == 0) {  //entry doesnt exist so i must create it
+        uintptr_t new_pdpt = pmm_alloc_page();
+        zero_page_table(phys_to_virtual(new_pdpt));
+        pml4[pml4_index] = (uintptr_t)new_pdpt | flags | 0x01;
     }
 
     uint64_t* pdpt = phys_to_virtual(pml4[pml4_index] & 0x000FFFFFFFFFF000); //0x000FFFFFFFFFF000 to set flag bits to zero, keep the rest
 
     if ((pdpt[pdpt_index] & 1) == 0) {
-        uintptr_t new_pd = pmm_alloc_page() | flags | 0x01;
-        zero(phys_to_virtual(new_pd));
-        pdpt[pdpt_index] = (uintptr_t)new_pd | flags;
+        uintptr_t new_pd = pmm_alloc_page();
+        zero_page_table(phys_to_virtual(new_pd));
+        pdpt[pdpt_index] = (uintptr_t)new_pd | flags | 0x01;
     }
 
     uint64_t* pd = phys_to_virtual(pdpt[pdpt_index] & 0x000FFFFFFFFFF000);
 
     if ((pd[pd_index] & 1) == 0) {
-        uintptr_t new_pt = pmm_alloc_page() | flags | 0x01;
-        zero(phys_to_virtual(new_pt));
-        pd[pd_index] = (uintptr_t)new_pt | flags;
+        uintptr_t new_pt = pmm_alloc_page();
+        zero_page_table(phys_to_virtual(new_pt));
+        pd[pd_index] = (uintptr_t)new_pt | flags | 0x01;
     }
 
     uint64_t* pt = phys_to_virtual(pd[pd_index] & 0x000FFFFFFFFFF000);
-
-    pt[pt_index] = (physical_addr & 0xFFF) | flags;
     //pt[ptindex] = ((unsigned long)physaddr) | (flags & 0xFFF) | 0x01; // Present
+    pt[pt_index] = (physical_addr & 0x000FFFFFFFFFF000ULL) | flags | 0x01;
+    invalid_virtual_adress(virtual_addr);
 }
-/*void map_page(void *physaddr, void *virtualaddr, unsigned int flags) {
-    // Make sure that both addresses are page-aligned.
-
-    unsigned long pdindex = (unsigned long)virtualaddr >> 22;
-    unsigned long ptindex = (unsigned long)virtualaddr >> 12 & 0x03FF;
-
-    unsigned long *pd = (unsigned long *)0xFFFFF000;
-    // Here you need to check whether the PD entry is present.
-    // When it is not present, you need to create a new empty PT and
-    // adjust the PDE accordingly.
-
-    unsigned long *pt = ((unsigned long *)0xFFC00000) + (0x400 * pdindex);
-    // Here you need to check whether the PT entry is present.
-    // When it is, then there is already a mapping present. What do you do now?
-
-    pt[ptindex] = ((unsigned long)physaddr) | (flags & 0xFFF) | 0x01; // Present
-
-    // Now you need to flush the entry in the TLB
-    // or you might not notice the change.
-}
-Unmapping an entry is essentially the same as above, but instead of assigning the pt[ptindex] a value, you set it to 0x00000000 (i.e. not present).
+/*
+Unmapping an entry is essentially the same as above, but instead of assigning the
+pt[ptindex] a value, you set it to 0x00000000 (i.e. not present).
 When the entire page table is empty, you may want to remove it and mark the page directory entry 'not present'.
 Of course you don't need the 'flags' or 'physaddr' for unmapping.
-
 */
 
-void unmap_page(virtual_addr) {
+void unmap_page(uintptr_t virtual_addr) {
+    uint64_t pt_index = (uint64_t)virtual_addr >> 12 & 0x1FF;
+    uint64_t pd_index = (uint64_t)virtual_addr >> 21 & 0x1FF;
+    uint64_t pdpt_index = (uint64_t)virtual_addr >> 30 & 0x1FF;
+    uint64_t pml4_index = (uint64_t)virtual_addr >> 39 & 0x1FF;
+
+    uintptr_t pml4_phys_adress = read_cr3() & ~0xFFF;
+    uint64_t* pml4 = phys_to_virtual(pml4_phys_adress);
+
+    if ((pml4[pml4_index] & 1) == 0) {
+        return;
+    }
+
+    uint64_t* pdpt = phys_to_virtual(pml4[pml4_index] & 0x000FFFFFFFFFF000);
+
+    if ((pdpt[pdpt_index] & 1) == 0) {
+        return;
+    }
+
+    uint64_t* pd = phys_to_virtual(pdpt[pdpt_index] & 0x000FFFFFFFFFF000);
+
+    if ((pd[pd_index] & 1) == 0) {
+        return;
+    }
+    uint64_t* pt = phys_to_virtual(pd[pd_index] & 0x000FFFFFFFFFF000);
+    pt[pt_index] = 0;
+    invalid_virtual_adress(virtual_addr);
 
 }
 

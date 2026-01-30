@@ -7,17 +7,18 @@ void kmain(void) {
     char buf[10];
     int i = 0;
     pmm_init(memmap_request.response);
+    uintptr_t physical_address = pmm_alloc_page();
+    void* virt = (void*)0xFFFF900000000000;
+    map_page((uintptr_t)virt, physical_address, 0x03);
+    *(uint64_t*)virt = 0xDEADBEEF;
+    //unmap_page((uintptr_t)virt);
+    volatile uint64_t xD = *(volatile uint64_t*)virt;
 
 
-    uint64_t xx = (uint64_t)physical_address;
-    char x[10];
-    for (uint8_t i = 0; i < 10; i++) {
-        x[i] = (char)xx;
-    }
-    while (i != 15) {
-        print_error(&framebuffer, x, 0);
-        print_hex(pmm_alloc_page(), buf);
-        pmm_free_page();
+    while (i != 5) {
+        print_error(&framebuffer, buf, 0);
+        //print_hex((uintptr_t)xD, buf);
+        //print_hex((uintptr_t)virt, buf);
         i++;
     }
 

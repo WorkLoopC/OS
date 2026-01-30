@@ -1,6 +1,6 @@
 
 #include "print.h"
-static volatile struct limine_framebuffer_request fb_request = {    //frame buffer z limine.h
+static volatile struct limine_framebuffer_request fb_request = {    //limine frame buffer
     .id = LIMINE_FRAMEBUFFER_REQUEST,
     .revision = 0
 };
@@ -92,14 +92,13 @@ uint8_t font8x8_basic[128][8] = {
 struct fb framebuffer;
 
 void fb_put_char(struct fb* fb, char c, uint32_t x, uint32_t y, uint32_t color) {
-    if (c < 32 || c > 126) return;
     for (int row = 0; row < 8; row++) {
         uint8_t bits = font8x8_basic[(int)c][row];
         for (int col = 0; col < 8; col++) {
-            if (bits & (1 << (7 - col))) {
+            if (bits & (1 << (7 - col))) {  //only if bit && col == 1 = pixel on 
                 int px = x + col;
                 int py = y + row;
-                if (px < fb->width && py < fb->height) fb->pixels[py * fb->pitch + px] = color;
+                if (px < fb->width && py < fb->height) fb->pixels[py * fb->pitch + px] = color; //ensuring no writing outside buffer possible
             }
         }
     }

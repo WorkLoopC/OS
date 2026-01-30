@@ -12,7 +12,7 @@ struct fb {
     uint32_t height;
     uint32_t pitch;
 };
-
+void print_hex(uintptr_t value, char* buffer);
 void print_error(struct fb* fb, const char* str, uint32_t newline);
 
 #endif

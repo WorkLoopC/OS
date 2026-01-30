@@ -1,12 +1,8 @@
 
 
-
-
-
 Paging PM to VM:
 
 Virtual adress:
-Bits 48-63 = Sign
 Bits 39-47 = PML4 (given by CR3)
 Bits 30-38 = PDPT
 Bits 21-29 = PD
@@ -27,4 +23,4 @@ Bits 11-0 = Offset
 
 CR3 = [ physical_address_of_PML4() | flags ] 
 To extract physicall adress = (0x000FFFFFFFFFF000(48bit number)) 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 0000 0000 0000
-Page flags 0–11 of virtual address	
+Each page table index is made out of 512entries maximum (406KiB / BYTE), each entry being 8bytes 
