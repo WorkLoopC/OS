@@ -1,7 +1,10 @@
 #include "kernel_memory.h"
-
-uintptr_t test;
-uint32_t test_decimal;
+#define PAGE 4096
+#define MAX_PAGES 32768
+#define BYTE 8
+#define CALCULATED_BITMAP_ELEMENTS 65512 
+#define HIGH_HALF 0xFFFF800000000000
+#define CLEAR_FLAGS 0x000FFFFFFFFFF000
 
 static size_t bitmap_size;
 static uint32_t bitmap[CALCULATED_BITMAP_ELEMENTS];
@@ -26,11 +29,11 @@ void pmm_init(struct limine_memmap_response* memmap) { //bitmap
     bitmap_size = (total_pages + 7) / BYTE; //+7 because of integer division , [65 512] bytes-524 096 pages 
     if (bitmap_size > CALCULATED_BITMAP_ELEMENTS) {
         //print_error(&framebuffer, "error ", 1);
-        //for (;;) __asm__("hlt");
+        for (;;) __asm__("hlt");
     }
 }
 
-uintptr_t pmm_alloc_page(void) {
+static uintptr_t pmm_alloc_page(void) {
     size_t page_index = 0;
     bitmap[0] |= 1u;
     for (size_t byte_index = 0; byte_index < bitmap_size; byte_index++) {
@@ -44,18 +47,16 @@ uintptr_t pmm_alloc_page(void) {
                     return physical_address;
                 }
             }
-            //if bit == 1.. 
         }
     }
-    //if (physical_address == (void*)0)??) for (;;) __asm__("hlt");
+    return 0;
 }
 
-void pmm_free_page(void) {
+static void pmm_free_page(void) {
     size_t page_index = (size_t)physical_address / PAGE;
     size_t byte_index = page_index / 8;
     size_t bit_index = page_index % 8;
     bitmap[byte_index] &= ~(1 << bit_index);
-    //for (;;) __asm__("hlt");
 }
 
 static inline uintptr_t read_cr3(void) {    //returns back 48bits, flag bits have to be set to zero
@@ -69,8 +70,8 @@ static inline uintptr_t read_cr3(void) {    //returns back 48bits, flag bits hav
     return value;
 }
 
-static inline void* phys_to_virtual(uintptr_t phys_adress) {
-    return (void*)phys_adress + 0xFFFF800000000000; //to map the phys_adress into the kernels higher-half and returns 64bits 
+static inline void* phys_to_virtual(uintptr_t phys_address) {
+    return (void*)phys_address + HIGH_HALF; //to map the phys_address into the kernels higher-half and returns 64bits 
 }
 
 static inline void zero_page_table(uint64_t* entries) { //zero the page table to clear old data
@@ -79,7 +80,7 @@ static inline void zero_page_table(uint64_t* entries) { //zero the page table to
     }
 }
 
-static inline void invalid_virtual_adress(uintptr_t virtual_addr) {
+static inline void invalid_virtual_address(uintptr_t virtual_addr) {
     __asm__ volatile("invlpg (%0)" ::"r" (virtual_addr) : "memory");
 }
 
@@ -89,15 +90,15 @@ void map_page(uintptr_t virtual_addr, uintptr_t physical_addr, uint64_t flags) {
     uint64_t pdpt_index = (uint64_t)virtual_addr >> 30 & 0x1FF;
     uint64_t pml4_index = (uint64_t)virtual_addr >> 39 & 0x1FF;
 
-    uintptr_t pml4_phys_adress = read_cr3() & ~0xFFF;   //0xFFF to switch flag bits to zero
-    uint64_t* pml4 = phys_to_virtual(pml4_phys_adress);
+    uintptr_t pml4_phys_address = read_cr3() & ~0xFFF;   //0xFFF to switch flag bits to zero
+    uint64_t* pml4 = phys_to_virtual(pml4_phys_address);
     if ((pml4[pml4_index] & 1) == 0) {  //entry doesnt exist so i must create it
         uintptr_t new_pdpt = pmm_alloc_page();
         zero_page_table(phys_to_virtual(new_pdpt));
         pml4[pml4_index] = (uintptr_t)new_pdpt | flags | 0x01;
     }
 
-    uint64_t* pdpt = phys_to_virtual(pml4[pml4_index] & 0x000FFFFFFFFFF000); //0x000FFFFFFFFFF000 to set flag bits to zero, keep the rest
+    uint64_t* pdpt = phys_to_virtual(pml4[pml4_index] & CLEAR_FLAGS); //0x000FFFFFFFFFF000 to set flag bits to zero, keep the rest
 
     if ((pdpt[pdpt_index] & 1) == 0) {
         uintptr_t new_pd = pmm_alloc_page();
@@ -105,19 +106,18 @@ void map_page(uintptr_t virtual_addr, uintptr_t physical_addr, uint64_t flags) {
         pdpt[pdpt_index] = (uintptr_t)new_pd | flags | 0x01;
     }
 
-    uint64_t* pd = phys_to_virtual(pdpt[pdpt_index] & 0x000FFFFFFFFFF000);
+    uint64_t* pd = phys_to_virtual(pdpt[pdpt_index] & CLEAR_FLAGS);
 
     if ((pd[pd_index] & 1) == 0) {
         uintptr_t new_pt = pmm_alloc_page();
         zero_page_table(phys_to_virtual(new_pt));
         pd[pd_index] = (uintptr_t)new_pt | flags | 0x01;
     }
-
-    uint64_t* pt = phys_to_virtual(pd[pd_index] & 0x000FFFFFFFFFF000);
-    //pt[ptindex] = ((unsigned long)physaddr) | (flags & 0xFFF) | 0x01; // Present
-    pt[pt_index] = (physical_addr & 0x000FFFFFFFFFF000ULL) | flags | 0x01;
-    invalid_virtual_adress(virtual_addr);
+    uint64_t* pt = phys_to_virtual(pd[pd_index] & CLEAR_FLAGS);
+    pt[pt_index] = (physical_addr & CLEAR_FLAGS) | flags | 0x01;
+    invalid_virtual_address(virtual_addr);
 }
+
 /*
 Unmapping an entry is essentially the same as above, but instead of assigning the
 pt[ptindex] a value, you set it to 0x00000000 (i.e. not present).
@@ -131,30 +131,50 @@ void unmap_page(uintptr_t virtual_addr) {
     uint64_t pdpt_index = (uint64_t)virtual_addr >> 30 & 0x1FF;
     uint64_t pml4_index = (uint64_t)virtual_addr >> 39 & 0x1FF;
 
-    uintptr_t pml4_phys_adress = read_cr3() & ~0xFFF;
-    uint64_t* pml4 = phys_to_virtual(pml4_phys_adress);
+    uintptr_t pml4_phys_address = read_cr3() & ~0xFFF;
+    uint64_t* pml4 = phys_to_virtual(pml4_phys_address);
 
     if ((pml4[pml4_index] & 1) == 0) {
         return;
     }
 
-    uint64_t* pdpt = phys_to_virtual(pml4[pml4_index] & 0x000FFFFFFFFFF000);
+    uint64_t* pdpt = phys_to_virtual(pml4[pml4_index] & CLEAR_FLAGS);
 
     if ((pdpt[pdpt_index] & 1) == 0) {
         return;
     }
 
-    uint64_t* pd = phys_to_virtual(pdpt[pdpt_index] & 0x000FFFFFFFFFF000);
+    uint64_t* pd = phys_to_virtual(pdpt[pdpt_index] & CLEAR_FLAGS);
 
     if ((pd[pd_index] & 1) == 0) {
         return;
     }
-    uint64_t* pt = phys_to_virtual(pd[pd_index] & 0x000FFFFFFFFFF000);
+    uint64_t* pt = phys_to_virtual(pd[pd_index] & CLEAR_FLAGS);
     pt[pt_index] = 0;
-    invalid_virtual_adress(virtual_addr);
-
+    invalid_virtual_address(virtual_addr);
 }
 
+static struct block_meta {
+    size_t size;
+    uint8_t free;
+    struct block_meta* next;
+}meta_data;
 
+void* kmalloc(size_t size) {
+    struct block_meta* meta = &meta_data;
+    if (size <= 0) return NULL;
+    static size_t previous_block = 0;
+    meta->size = size;
+    uintptr_t phys_address = pmm_alloc_page();
+    uintptr_t virt_address = meta->size + HIGH_HALF + previous_block;
+    previous_block += size;
+    map_page(virt_address, phys_address, 0x8000000000000003);
+    return (void*)virt_address;
+}
 
-
+void free(void* ptr) {
+    if (ptr == NULL) {
+        return;
+    }
+    unmap_page((uintptr_t)ptr);
+}

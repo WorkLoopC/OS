@@ -1,7 +1,9 @@
 
 
 Paging PM to VM:
-
+0x0000000000000000 - 0x00007FFFFFFFFFFF   (low half)
+0xFFFF800000000000 - 0xFFFFFFFFFFFFFFFF   (high half, lowest high-half adress)
+0x000FFFFFFFFFF000 - Set flags to zero, keep addresses
 Virtual adress:
 Bits 39-47 = PML4 (given by CR3)
 Bits 30-38 = PDPT
@@ -15,7 +17,7 @@ Bits 39-47 = PML4 (given by CR3)
 Bits 30-38 = PDPT
 Bits 21-29 = PD
 Bits 12-20 = PT
-Bits 11-0 = flags (0=P, 1=R/W, 2=U/S ,3=PWT ,4=PCD, 5=A, 6=AVL, 7=RSVD(0), 8-11=AVL)
+Bits 11-0 = flags (0=P, 1=R/W, 2=U/S ,3=PWT ,4=PCD, 5=A, 6=AVL, 7=RSVD(0), 8-11=AVL, 63=1 code execution forbidden)
 
 Physicall adress:
 Bits 12-51 = Page base
@@ -24,3 +26,76 @@ Bits 11-0 = Offset
 CR3 = [ physical_address_of_PML4() | flags ] 
 To extract physicall adress = (0x000FFFFFFFFFF000(48bit number)) 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 0000 0000 0000
 Each page table index is made out of 512entries maximum (406KiB / BYTE), each entry being 8bytes 
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Interrupts:
+Interrupts are signals from a device, such as a keyboard or a hard drive, to the CPU, telling it to immediately stop whatever it is currently doing and do something else.
+When a specific interrupt arises, the CPU looks up an entry for that specific interrupt from a table provided by the OS. 
+In x86 protected mode the table is called the Interrupt Descriptor Table (IDT) and can have up to 256 entries.
+After the CPU finds the entry for the interrupt, it jumps to the code the entry points to. This code that is run in response to the interrupt is known as a 
+interrupt service routine (ISR) or an interrupt handler. An ISR is called directly by the CPU, and the protocol for calling an ISR differs from calling e.g. 
+a C function. Most importantly, an ISR has to end with the iret opcode (or iretq in long mode—yes, even when using intel syntax),
+whereas usual C functions end with ret or retf. The obvious but nevertheless wrong solution leads to one of the most "popular" triple-fault errors among OS programmers.
+
+PIC (Programmable Interrupt Controller):
+There are actually two PICs on most systems, and each has 8 different inputs, plus one output signal thats used to tell the CPU that an IRQ occurred. 
+The slave PICs output signal is connected to the master PICs third input (input 2) so when the slave PIC wants to tell the CPU an interrupt occurred 
+it actually tells the master PIC, and the master PIC tells the CPU.
+When the CPU acknowledges the "interrupt occurred" signal, the PIC chip sends the interrupt number (between 00h and FFh, or 0 and 255 decimal) to the CPU.
+Note that interrupts are handled by priority level: 0, 1, 2, 8, 9, 10, 11, 12, 13, 14, 15, 3, 4, 5, 6, 7. So, if IRQ 8 and IRQ 3 come in simultaneously, 
+IRQ 8 is sent to the CPU. When the CPU finishes handling the interrupt, it tells the PIC that its OK to resume sending interrupts.
+Programming with the 8259 PIC:
+Each chip (master and slave) has a command port and a data port (given in the table below):
+Chip - Purpose	I/O port
+Master PIC - Command	0x0020
+Master PIC - Data	    0x0021
+Slave PIC - Command	    0x00A0
+Slave PIC - Data	    0x00A1
+
+
+GDT (Global Descriptor Table):
+On the IA-32 and x86-64 architectures, and more precisely in Protected Mode or Long Mode, Interrupt Service Routines and a good deal of memory management are 
+controlled through tables of descriptors. Each descriptor stores information about a single object (e.g. a service routine, a task, a chunk of code or data) 
+the CPU might need at some time. If you try, for instance, to load a new value into a Segment Register, the CPU needs to perform safety and access control 
+checks to see whether youre actually entitled to access that specific memory area. On these architectures, there are three of this type of table: 
+Global Descriptor Table (GDT)- is a binary data structure specific to the IA-32 and x86-64 architectures. It contains entries telling the CPU about memory segments
+Segment descriptor:
+
+0-15   : limit low
+16-31  : base low
+32-39  : base mid
+40-47  : access byte    (https://wiki.osdev.org/Global_Descriptor_Table)
+48-51  : limit  
+52-55  : flags  (0=reserved, 1=Long-mode(if set 1 the descriptor defines 64bit code segment), 2=DB(set to 0 because long-mode), 3=G(set to 1 because Limit is in 4kb blocks))
+56-63  : base high
+
+
+Local Descriptor Table (LDT)- is like the Global Descriptor Table in that it holds Segment descriptors for access to memory. The difference is that every Task/thread 
+can have its own LDT, and the OS can change the LDT Register (LDTR) on every Task switch. That means that every program can have its own list of memory Segment descriptors,
+and keep them private from other programs. Note that with 386+ processors, the paging has made LDT almost obsolete, and theres no longer need for multiple LDT descriptors, 
+so you can almost safely ignore the LDT for OS developing, unless you have by design many different segments to store.
+
+Interrupt Descriptor Table (IDT)-is a binary data structure specific to the IA-32 and x86-64 architectures (Array of 256 8byte entries, each entry contains a pointer to an 
+interrupt handler, segment selector and offset). It is the Protected Mode and Long Mode counterpart to the Real Mode Interrupt Vector Table (IVT) telling the CPU where 
+the Interrupt Service Routines (ISR) are located (one per interrupt vector). It is similar to the Global Descriptor Table in structure. 
+The location of the IDT is kept in the IDTR (IDT register, its 6byte and top 4bytes contain base address, bottom 2 store table limit). 
+This is loaded using the LIDT assembly instruction, whose argument is a pointer to an IDT Descriptor structure.
+
+Bytes 0-1   : offset low
+Bytes 2-3   : selector
+Byte 4      : IST
+Byte 5      : type + flags
+Bytes 6-7   : offset mid
+Bytes 8-11  : offset high
+Bytes 12-15 : zero
+
+Interrupt Vector Table (IVT)- is a table that specifies the addresses of all the 256 interrupt handlers used in real mode.
+
+CPU instructions:
+LGDT (Load GDTR)- lgdt [gdtr], says where the segment descriptors live
+LIDT (Load IDTR)- lidt [idtr] , says where the Interrupt handlers are
+LLDT (Load LDTR)- lldt ax(mostly left at 0), Loads LDTR with a selector pointing into a GDT or LDT entry
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+

@@ -89,22 +89,28 @@ uint8_t font8x8_basic[128][8] = {
 
 };
 
-struct fb framebuffer;
+struct fb {
+    uint32_t* pixels;
+    uint32_t width;
+    uint32_t height;
+    uint32_t pitch;
+}framebuffer;
 
-void fb_put_char(struct fb* fb, char c, uint32_t x, uint32_t y, uint32_t color) {
-    for (int row = 0; row < 8; row++) {
+void fb_put_char(char c, uint32_t x, uint32_t y, uint32_t color) {
+    struct fb* fb = &framebuffer;
+    for (uint8_t row = 0; row < 8; row++) {
         uint8_t bits = font8x8_basic[(int)c][row];
-        for (int col = 0; col < 8; col++) {
-            if (bits & (1 << (7 - col))) {  //only if bit && col == 1 = pixel on 
-                int px = x + col;
-                int py = y + row;
+        for (uint8_t col = 0; col < 8; col++) {
+            if (bits & (1 << (7 - col))) {//only if bit && col == 1 = pixel on 
+                uint32_t px = x + col;
+                uint32_t py = y + row;
                 if (px < fb->width && py < fb->height) fb->pixels[py * fb->pitch + px] = color; //ensuring no writing outside buffer possible
             }
         }
     }
 }
 
-void print_error(struct fb* fb, const char* str, uint32_t newline) { // newline 0 = same line, 1 = new line 
+void print_error(const char* str, uint32_t newline) { // 0 = newline, 1 = same line
     uint32_t color = 0xAA0000;
     uint32_t x = 0;
     static uint32_t static_x = 0;
@@ -123,21 +129,9 @@ void print_error(struct fb* fb, const char* str, uint32_t newline) { // newline 
         static_x = 0;
     }
     while (*str) {
-        fb_put_char(fb, *str, x, y, color);
+        fb_put_char(*str, x, y, color);
         x += 8;
         str++;
         static_x += 8;
     }
-
-}
-
-void print_hex(uintptr_t value, char* buffer) { //Funkce na konverzi stringu na uintptr (pro print adres k debugovani memory managementu)
-    char hex[] = "0123456789ABCDEF";
-    buffer[0] = '0';
-    buffer[1] = 'x';
-    for (int i = 0; i < (sizeof(uintptr_t) * 2); i++) {
-        int shift = ((sizeof(uintptr_t) * 2 - 1 - i) * 4);
-        buffer[2 + i] = hex[(value >> shift) & 0xF];
-    }
-    buffer[2 + sizeof(uintptr_t) * 2] = '\0';
 }
