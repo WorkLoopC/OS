@@ -86,19 +86,19 @@ static struct __attribute__((packed)) idtr_t {   //Pointer to correct IDT entry
     uint64_t base;     //The linear address of the Interrupt Descriptor Table (not the physical address, paging applies).
 }idtr;
 
-void idt_encode(uint8_t entries, void* offset, uint8_t type_attributes) {    //must return using iretq instaed of iret
+void idt_encode(uint8_t vector, void* offset, uint8_t type_attributes) {    //must return using iretq instaed of iret
     //Encode offset
-    idt_t[entries].offset = ((uint64_t)offset & 0xFFFF);
-    idt_t[entries].offset_2 = ((uint64_t)offset >> 16) & 0xFFFF;
-    idt_t[entries].offset_3 = ((uint64_t)offset >> 32) & 0xFFFFFFFF;
+    idt_t[vector].offset = ((uint64_t)offset & 0xFFFF);
+    idt_t[vector].offset_2 = ((uint64_t)offset >> 16) & 0xFFFF;
+    idt_t[vector].offset_3 = ((uint64_t)offset >> 32) & 0xFFFFFFFF;
     //Encode segment_selector
-    idt_t[entries].segment_selector = 0x08;
+    idt_t[vector].segment_selector = 0x08;
     //Encode ist
-    idt_t[entries].ist = 0;
+    idt_t[vector].ist = 0;
     //Encode type_attributes
-    idt_t[entries].type_attributes = type_attributes;
+    idt_t[vector].type_attributes = type_attributes;
 
-    idt_t[entries].zero = 0;
+    idt_t[vector].zero = 0;
 
 }
 
@@ -126,10 +126,7 @@ void set_idt_entry_descriptor(void) {
 static inline void outb(uint16_t port, uint8_t val)
 {
     __asm__ volatile ( "outb %b0, %w1" : : "a"(val), "Nd"(port) : "memory");
-    /* There's an outb %al, $imm8 encoding, for compile-time constant port numbers that fit in 8b. (N constraint).
-     * Wider immediate constants would be truncated at assemble-time (e.g. "i" constraint).
-     * The  outb  %al, %dx  encoding is the only option for all other cases.
-     * %1 expands to %dx because  port  is a uint16_t.  %w1 could be used if we had the port number a wider C type */
+    //Sends a 8/16/32-bit value on a I/O location
 }
 
 static inline void io_wait(void)
@@ -154,6 +151,49 @@ void PIC_sendEOI(uint8_t irq)   //Wait a very small amount of time (1 to 4 micro
 	
 	outb(PIC1_COMMAND,PIC_EOI);
 }
+/*
+IRQ	Description
+0	Programmable Interrupt Timer Interrupt
+1	Keyboard Interrupt
+2	Cascade (used internally by the two PICs. never raised)
+3	COM2 (if enabled)
+4	COM1 (if enabled)
+5	LPT2 (if enabled)
+6	Floppy Disk
+7	LPT1 / Unreliable "spurious" interrupt (usually)
+8	CMOS real-time clock (if enabled)
+9	Free for peripherals / legacy SCSI / NIC
+10	Free for peripherals / SCSI / NIC
+11	Free for peripherals / SCSI / NIC
+12	PS2 Mouse
+13	FPU / Coprocessor / Inter-processor
+14	Primary ATA Hard Disk
+15	Secondary ATA Hard Disk
+
+
+Vector offset must be divisible by 8
+
+Chip	Interrupt numbers (IRQ)	Vector offset	Interrupt Numbers
+Master PIC	0 to 7	0x08	0x08 to 0x0F
+Slave PIC	8 to 15	0x70	0x70 to 0x77
+
+
+Chip - Purpose	I/O port
+Master PIC - Command	0x0020
+Master PIC - Data	    0x0021
+Slave PIC - Command	    0x00A0
+Slave PIC - Data	    0x00A1
+
+
+ICW1	Start initialization + basic flags
+ICW2	Interrupt vector offset
+ICW3	Master/slave wiring information
+ICW4	Operating mode (8086 mode etc.)
+
+
+vector = offset + IRQ_number
+*/
+
 
 void PIC_remap(int offset1, int offset2)
 {
@@ -167,7 +207,7 @@ void PIC_remap(int offset1, int offset2)
 	io_wait();
 	outb(PIC1_DATA, 1 << CASCADE_IRQ);        // ICW3: tell Master PIC that there is a slave PIC at IRQ2
 	io_wait();
-	outb(PIC2_DATA, 2);                       // ICW3: tell Slave PIC its cascade identity (0000 0010)
+	outb(PIC2_DATA, 2);                       // ICW3: Slave PIC identity is 2
 	io_wait();
 	
 	outb(PIC1_DATA, ICW4_8086);               // ICW4: have the PICs use 8086 mode (and not 8080 mode)
